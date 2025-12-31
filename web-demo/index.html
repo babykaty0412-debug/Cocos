@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎰 拉霸機 · Web Demo</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;
+    background:radial-gradient(circle at 50% 18%,#1c0c46 0%,#0c0524 55%,#05020f 100%);
+    color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-height:100vh;overflow:hidden;user-select:none;
+  }
+  .skyline{position:fixed;left:0;right:0;bottom:0;height:160px;display:flex;align-items:flex-end;
+    justify-content:center;gap:6px;opacity:.5;z-index:0;pointer-events:none}
+  .bld{background:#1a0a3e;border-top:1px solid #2c1860}
+  .cab{position:relative;z-index:1;width:min(92vw,720px);background:#1a0b3a;
+    border:7px solid #c8940c;border-radius:26px;padding:22px 22px 26px;
+    box-shadow:0 0 60px rgba(120,70,255,.35),inset 0 0 40px rgba(0,0,0,.5)}
+  .title{text-align:center;background:#08031a;border:3px solid #ffd732;border-radius:12px;
+    padding:10px 0;color:#ffd732;font-size:clamp(20px,4.5vw,30px);font-weight:800;letter-spacing:6px;
+    text-shadow:0 0 14px rgba(255,210,60,.7)}
+  .bulbs{display:flex;justify-content:center;gap:8px;margin:12px 0 14px}
+  .bulb{width:14px;height:14px;border-radius:50%;animation:blink 1.1s infinite}
+  @keyframes blink{0%,100%{opacity:1;box-shadow:0 0 8px #ffe23c}50%{opacity:.25;box-shadow:none}}
+  .reels{display:flex;justify-content:center;gap:16px}
+  .win{width:clamp(96px,20vw,156px);height:clamp(96px,20vw,156px);background:#fcf6e1;
+    border:5px solid #c8940c;border-radius:12px;overflow:hidden;position:relative;
+    box-shadow:inset 0 6px 14px rgba(60,30,0,.3),inset 0 -6px 14px rgba(60,30,0,.3)}
+  .strip{position:absolute;top:0;left:0;width:100%}
+  .sym{height:clamp(96px,20vw,156px);display:flex;align-items:center;justify-content:center;
+    font-size:clamp(52px,11vw,86px);font-weight:800;font-family:Georgia,"Times New Roman",serif}
+  .sym.bar{font-size:clamp(26px,5.5vw,42px);letter-spacing:1px}
+  .pay{display:flex;justify-content:center;gap:18px;margin:14px 0 0;color:#d8c38a;font-size:13px}
+  .pay b{color:#ffd732}
+  .result{text-align:center;margin:12px auto 0;max-width:560px;background:#0c051e;
+    border:2px solid #c8940c;border-radius:10px;padding:9px;font-size:clamp(14px,3vw,17px)}
+  .score{text-align:center;color:#5ae65a;font-size:clamp(24px,5.5vw,32px);font-weight:800;
+    margin:14px 0 6px;text-shadow:0 0 12px rgba(90,230,90,.5)}
+  .betrow{display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:14px}
+  .bet{min-width:150px;text-align:center;background:#08031a;border:2px solid #c8940c;
+    border-radius:10px;padding:10px 0;color:#ffc35a;font-size:18px;font-weight:700}
+  .ctrl{display:flex;justify-content:center;gap:16px}
+  .btn{cursor:pointer;border:3px solid #ffd732;border-radius:16px;color:#ffe796;font-weight:800;
+    user-select:none;transition:transform .08s,filter .15s;display:flex;align-items:center;justify-content:center}
+  .btn:hover{filter:brightness(1.12)}
+  .btn:active{transform:scale(.95)}
+  .pm{width:56px;height:48px;background:#7a4600;font-size:30px}
+  .spin{flex:1;max-width:320px;height:64px;background:linear-gradient(#ffb52e,#d27800);
+    color:#3a1d00;font-size:27px;letter-spacing:3px;text-shadow:0 1px 0 rgba(255,255,255,.3)}
+  .auto{width:156px;height:64px;background:#7a4600;font-size:21px}
+  .bigwin{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%) scale(.3);opacity:0;
+    pointer-events:none;background:rgba(8,3,24,.95);border:6px solid #ffd732;border-radius:24px;
+    padding:26px 48px;text-align:center;transition:transform .4s cubic-bezier(.2,1.5,.5,1),opacity .25s;
+    box-shadow:0 0 50px rgba(255,210,60,.6)}
+  .bigwin .t{color:#ffd732;font-size:clamp(34px,8vw,52px);font-weight:900;letter-spacing:2px;text-shadow:0 0 18px rgba(255,210,60,.8)}
+  .bigwin .a{color:#7bff9c;font-size:clamp(26px,6vw,38px);font-weight:800;margin-top:8px}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.34)}}
+  .pulse{animation:pulse .34s ease-in-out 3}
+  .foot{position:fixed;bottom:10px;z-index:1;color:#6b5da0;font-size:12px;letter-spacing:1px}
+  .hint{color:#8a7ec0;font-size:12px;text-align:center;margin-top:10px}
+</style>
+</head>
+<body>
+  <div class="skyline" id="skyline"></div>
+  <div class="cab">
+    <div class="title">777　拉霸機　777</div>
+    <div class="bulbs" id="bulbs"></div>
+    <div class="reels" id="reels"></div>
+    <div class="pay">777 <b>×50</b>　·　三連線 <b>×10</b>　·　兩連線 <b>×3</b></div>
+    <div class="result" id="result">— 按 SPIN 或空白鍵開始 —</div>
+    <div class="score" id="score">分數　1000</div>
+    <div class="betrow">
+      <div class="btn pm" id="minus">−</div>
+      <div class="bet" id="bet">押注　10</div>
+      <div class="btn pm" id="plus">＋</div>
+    </div>
+    <div class="ctrl">
+      <div class="btn spin" id="spin">SPIN ▶</div>
+      <div class="btn auto" id="auto">AUTO ▶</div>
+    </div>
+    <div class="hint">空白鍵 = SPIN　·　↑↓ = 調押注</div>
+    <div class="bigwin" id="bigwin">
+      <div class="t" id="bwt">BIG WIN</div>
+      <div class="a" id="bwa">+0</div>
+    </div>
+  </div>
+  <div class="foot">Cocos Creator 3.8.8 作品集 · 網頁 Demo</div>
+<script>
+(function(){
+  var SYM=['7','★','◆','♣','♥','BAR'];
+  var COL={'7':'#ff4d4d','★':'#ffd23a','◆':'#4db6ff','♣':'#57e08a','♥':'#ff5d8f','BAR':'#c08bff'};
+  var BET=[10,20,50,100];
+  var betIdx=0, score=1000, spinning=false, auto=false;
+  var H, LEN=30, LAND=LEN-3, DUR=[1.0,1.4,1.8];
+  var $=function(id){return document.getElementById(id)};
+  function bet(){return BET[betIdx]}
+  function rand(n){return Math.floor(Math.random()*n)}
+  function setSym(el,i){el.textContent=SYM[i];el.style.color=COL[SYM[i]];el.className='sym'+(SYM[i]==='BAR'?' bar':'')}
+
+  var sky=$('skyline'),hs=[120,80,150,95,135,70,110,90,140,100,125,85];
+  hs.forEach(function(h,i){var w=34+(i%3)*10;var b=document.createElement('div');b.className='bld';b.style.width=w+'px';b.style.height=h+'px';sky.appendChild(b)});
+
+  var bw=$('bulbs');
+  for(var i=0;i<16;i++){var b=document.createElement('div');b.className='bulb';b.style.background=i%2?'#4e3a0e':'#ffee3c';b.style.animationDelay=(i*0.07)+'s';bw.appendChild(b)}
+
+  var reels=[], rw=$('reels');
+  for(var r=0;r<3;r++){
+    var win=document.createElement('div');win.className='win';
+    var strip=document.createElement('div');strip.className='strip';
+    var syms=[];
+    for(var k=0;k<LEN;k++){var s=document.createElement('div');setSym(s,rand(6));strip.appendChild(s);syms.push(s)}
+    setSym(syms[0],2);
+    win.appendChild(strip);rw.appendChild(win);
+    reels.push({win:win,strip:strip,syms:syms,result:2});
+  }
+  H=reels[0].syms[0].getBoundingClientRect().height||120;
+
+  function render(){$('score').textContent='分數　'+score;$('bet').textContent='押注　'+bet()}
+  function result(t,c){var e=$('result');e.textContent=t;e.style.color=c||'#fff'}
+  function countUp(from,to){var t0=performance.now();(function step(now){var p=Math.min(1,(now-t0)/650);var v=Math.round(from+(to-from)*p);$('score').textContent='分數　'+v;if(p<1)requestAnimationFrame(step)})(t0)}
+  function flash(idx){idx.forEach(function(i){var el=reels[i].syms[LAND];el.classList.remove('pulse');void el.offsetWidth;el.classList.add('pulse')})}
+  function bigWin(amt,jp){var o=$('bigwin');$('bwt').textContent=jp?'★ JACKPOT ★':'BIG WIN';$('bwa').textContent='+'+amt;o.style.opacity='1';o.style.transform='translate(-50%,-50%) scale(1)';setTimeout(function(){o.style.opacity='0';o.style.transform='translate(-50%,-50%) scale(.3)'},1600)}
+  function syncAuto(){var a=$('auto');a.textContent=auto?'AUTO ⏸':'AUTO ▶';a.style.background=auto?'#ffcc32':'#7a4600';a.style.color=auto?'#241500':'#ffe796'}
+
+  function spin(){
+    if(spinning)return;
+    if(score<bet()){result('餘額不足，請降低押注','#ff6b6b');auto=false;syncAuto();return}
+    spinning=true;score-=bet();render();result('轉動中…','#ffffff');
+    H=reels[0].syms[0].getBoundingClientRect().height||H;
+    reels.forEach(function(R,ri){
+      var prev=R.result;R.result=rand(6);
+      R.syms.forEach(function(el,k){setSym(el,k===LAND?R.result:rand(6));el.classList.remove('pulse')});
+      setSym(R.syms[0],prev);
+      R.strip.style.transition='none';R.strip.style.transform='translateY(0)';
+      R.strip.offsetHeight;
+      R.strip.style.transition='transform '+DUR[ri]+'s cubic-bezier(.12,.62,.28,1)';
+      R.strip.style.transform='translateY('+(-LAND*H)+'px)';
+    });
+    setTimeout(onEnd,DUR[2]*1000+80);
+  }
+  function onEnd(){
+    spinning=false;
+    var a=reels[0].result,b=reels[1].result,c=reels[2].result,win=0;
+    if(a===b&&b===c){var jp=SYM[a]==='7';win=bet()*(jp?50:10);result(jp?'★ JACKPOT 777 ★':SYM[a]+' 三連線大獎！','#ffd732');flash([0,1,2]);bigWin(win,jp);}
+    else if(a===b||b===c||a===c){win=bet()*3;result('兩連線小獎！','#5ae6a5');flash(a===b?[0,1]:b===c?[1,2]:[0,2]);}
+    else{result('再接再厲','#b9ac9b');}
+    if(win>0){var from=score;score+=win;countUp(from,score);render()}else render();
+    if(auto)setTimeout(function(){if(auto&&!spinning&&score>=bet())spin()},1100);
+  }
+
+  $('spin').onclick=spin;
+  $('minus').onclick=function(){if(!spinning){betIdx=(betIdx+BET.length-1)%BET.length;render()}};
+  $('plus').onclick=function(){if(!spinning){betIdx=(betIdx+1)%BET.length;render()}};
+  $('auto').onclick=function(){auto=!auto;syncAuto();if(auto&&!spinning)spin()};
+  document.addEventListener('keydown',function(e){
+    if(e.code==='Space'){e.preventDefault();spin()}
+    else if(e.code==='ArrowUp'){if(!spinning){betIdx=(betIdx+1)%BET.length;render()}}
+    else if(e.code==='ArrowDown'){if(!spinning){betIdx=(betIdx+BET.length-1)%BET.length;render()}}
+  });
+  render();
+})();
+</script>
+</body>
+</html>
