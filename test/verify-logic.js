@@ -107,7 +107,7 @@ eq(g._spinning, false, '結算後 spinning=false（tween 快轉觸發 _onSpinEnd
 ok(g._reels.every(r => r.result >= 0 && r.result < 6), '三輪 result 都在 [0,6)');
 ok(g._score !== before - 10 ? true : true, 'spin 後分數已更新'); // 由輸贏決定，僅確認流程跑完
 
-console.log('\n【T6】強制 JACKPOT（777）：押注×50');
+console.log('\n【T6】強制 JACKPOT（777）：押注×60');
 {
   const { g } = makeGame();
   g._onceQ.length = 0;
@@ -116,28 +116,35 @@ console.log('\n【T6】強制 JACKPOT（777）：押注×50');
   g._reels[0].result = 0; g._reels[1].result = 0; g._reels[2].result = 0; // '7','7','7'
   const nBefore = createdNodes.length;
   g._onSpinEnd();
-  eq(g._score, 100 + 10 * 50, 'JACKPOT 分數 = 100 + 500 = 600');
+  eq(g._score, 100 + 10 * 60, 'JACKPOT 分數 = 100 + 600 = 700');
   ok(g._resultLabel.string.includes('JACKPOT'), '結果文字含 JACKPOT');
   ok(createdNodes.slice(nBefore).includes('BigWin'), '建立 BIG WIN 特效節點');
 }
 
-console.log('\n【T7】強制三連線（非 7）：押注×10');
+console.log('\n【T7】強制三連線（★）：押注×25');
 {
   const { g } = makeGame(); g._onceQ.length = 0;
   g._betIdx = 0; g._score = 100;
   g._reels[0].result = 1; g._reels[1].result = 1; g._reels[2].result = 1; // '★'×3
   g._onSpinEnd();
-  eq(g._score, 100 + 10 * 10, '三連線分數 = 100 + 100 = 200');
+  eq(g._score, 100 + 10 * 25, '三連線分數 = 100 + 250 = 350');
+  ok(g._resultLabel.string.includes('三連線'), '結果文字含 三連線');
 }
 
-console.log('\n【T8】強制兩連線：押注×3');
+console.log('\n【T8】兩連線：7 對 ×3、♣ 對 ×1');
 {
   const { g } = makeGame(); g._onceQ.length = 0;
   g._betIdx = 0; g._score = 100;
-  g._reels[0].result = 2; g._reels[1].result = 2; g._reels[2].result = 3; // ◆◆♣
+  g._reels[0].result = 0; g._reels[1].result = 0; g._reels[2].result = 2; // 7,7,◆ → PAIR[0]=3
   g._onSpinEnd();
-  eq(g._score, 100 + 10 * 3, '兩連線分數 = 100 + 30 = 130');
-  ok(g._resultLabel.string.includes('小獎'), '結果文字含 小獎');
+  eq(g._score, 100 + 10 * 3, '7 對分數 = 100 + 30 = 130');
+  ok(g._resultLabel.string.includes('兩連線'), '結果文字含 兩連線');
+
+  const { g: g2 } = makeGame(); g2._onceQ.length = 0;
+  g2._betIdx = 0; g2._score = 100;
+  g2._reels[0].result = 3; g2._reels[1].result = 3; g2._reels[2].result = 4; // ♣,♣,♥ → PAIR[3]=1
+  g2._onSpinEnd();
+  eq(g2._score, 100 + 10 * 1, '♣ 對分數 = 100 + 10 = 110（回本）');
 }
 
 console.log('\n【T9】強制無連線：不加分');
@@ -149,36 +156,70 @@ console.log('\n【T9】強制無連線：不加分');
   eq(g._score, 100, '無連線分數不變 = 100');
 }
 
-console.log('\n【T10】餘額不足：擋下並提示');
+console.log('\n【T10】餘額不足分支');
 {
+  // (a) 完全破產（< 最低注 10）→ 自動補滿 1000
   const { g } = makeGame(); g._onceQ.length = 0;
-  g._betIdx = 0; g._score = 5;   // < bet 10
+  g._betIdx = 0; g._score = 5;
   g.spin();
-  eq(g._score, 5, '餘額不足不扣款');
-  eq(g._spinning, false, '餘額不足不進入旋轉');
-  ok(g._resultLabel.string.includes('餘額不足'), '提示餘額不足');
+  eq(g._score, 1000, '破產自動補滿 1000');
+  eq(g._spinning, false, '補幣時不進入旋轉');
+  ok(g._resultLabel.string.includes('補滿'), '提示已補滿');
+
+  // (b) 分數夠活但不夠目前押注（50 < 注 100）→ 擋下、不扣款、提示降注
+  const { g: g2 } = makeGame(); g2._onceQ.length = 0;
+  g2._betIdx = 3; g2._score = 50;   // 注 100
+  g2.spin();
+  eq(g2._score, 50, '不足目前押注時不扣款');
+  eq(g2._spinning, false, '不進入旋轉');
+  ok(g2._resultLabel.string.includes('餘額不足'), '提示餘額不足、請降低押注');
 }
 
 console.log('\n【T11】分數滾動動畫跑到正確終值');
 {
   const { g } = makeGame(); g._onceQ.length = 0;
   g._betIdx = 0; g._score = 100;
-  g._reels[0].result = 1; g._reels[1].result = 1; g._reels[2].result = 1;
+  g._reels[0].result = 1; g._reels[1].result = 1; g._reels[2].result = 1; // ★×3 = ×25
   g._onSpinEnd();
-  ok(g._scoreLabel.string.includes('200'), `score label 顯示終值 200（實際 "${g._scoreLabel.string}"）`);
+  ok(g._scoreLabel.string.includes('350'), `score label 顯示終值 350（實際 "${g._scoreLabel.string}"）`);
   eq(g._scoreAnimating, false, '計分動畫結束後 _scoreAnimating=false');
 }
 
 console.log('\n【T12】AUTO 切換會立即觸發一次 spin');
 {
   const { g } = makeGame(); g._onceQ.length = 0;
-  const s0 = g._score;
   g.toggleAuto();
   eq(g._auto, true, 'AUTO 開啟');
-  // 一次 spin 必扣注再結算，淨額不可能恰等於原值 → 分數必變動
-  ok(g._score !== s0, `開 AUTO 立即旋轉、分數已變動（${s0} → ${g._score}）`);
   eq(g._spinning, false, 'AUTO 觸發的 spin 已完成結算');
-  ok(g._onceQ.length >= 1, 'AUTO 已排入下一次旋轉');
+  // _onceQ 只在 _onSpinEnd 內排入 → 有排程即證明 spin 已完整跑完一輪
+  ok(g._onceQ.length >= 1, 'AUTO 觸發並完成一次 spin、已排入下一輪');
+  ok(!g._resultLabel.string.includes('按 SPIN'), '結果已從初始訊息更新（spin 有結算）');
+}
+
+console.log('\n【T13】RTP 精算（窮舉加權 6³）+ evaluate 純函式');
+{
+  const W = moduleExports.WEIGHTS, T = moduleExports.TRIPLE, P = moduleExports.PAIR;
+  const evaluate = moduleExports.evaluate;
+  ok(Array.isArray(W) && W.length === 6, 'WEIGHTS 已匯出（長度 6）');
+  ok(typeof evaluate === 'function', 'evaluate 已匯出');
+  // evaluate 正確性
+  eq(evaluate(0,0,0).mult, T[0], 'evaluate 777 → TRIPLE[0]');
+  eq(evaluate(0,0,0).jackpot, true, 'evaluate 777 → jackpot');
+  eq(evaluate(1,1,1).mult, T[1], 'evaluate ★★★ → TRIPLE[1]');
+  eq(evaluate(0,0,2).mult, P[0], 'evaluate 7,7,◆ → PAIR[0]');
+  eq(evaluate(1,2,3).mult, 0, 'evaluate 全不同 → 0');
+  // 精確 RTP
+  const WSUM = W.reduce((a,b)=>a+b,0);
+  const p = W.map(w => w / WSUM);
+  let rtp = 0, hit = 0;
+  for (let a=0;a<6;a++) for (let b=0;b<6;b++) for (let c=0;c<6;c++) {
+    const prob = p[a]*p[b]*p[c];
+    const m = evaluate(a,b,c).mult;
+    rtp += prob * m; if (m > 0) hit += prob;
+  }
+  console.log(`     RTP = ${(rtp*100).toFixed(1)}%　總中獎率 = ${(hit*100).toFixed(1)}%`);
+  ok(rtp > 0.88 && rtp < 0.96, `RTP 落在 88%~96% 合理區間（實際 ${(rtp*100).toFixed(1)}%）`);
+  ok(rtp < 1.0, 'RTP < 100%（玩家長期不會穩賺，符合真實機台）');
 }
 
 // ── 5) 結果 ──────────────────────────────────────────────────────────────────

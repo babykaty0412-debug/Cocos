@@ -69,7 +69,7 @@
     <div class="title">777　拉霸機　777</div>
     <div class="bulbs" id="bulbs"></div>
     <div class="reels" id="reels"></div>
-    <div class="pay">777 <b>×50</b>　·　三連線 <b>×10</b>　·　兩連線 <b>×3</b></div>
+    <div class="pay">777 <b>×60</b>　·　三連線 <b>×8–25</b>　·　兩連線 <b>×1–3</b>　·　RTP <b>94%</b></div>
     <div class="result" id="result">— 按 SPIN 或空白鍵開始 —</div>
     <div class="score" id="score">分數　1000</div>
     <div class="betrow">
@@ -93,12 +93,28 @@
   var SYM=['7','★','◆','♣','♥','BAR'];
   var COL={'7':'#ff4d4d','★':'#ffd23a','◆':'#4db6ff','♣':'#57e08a','♥':'#ff5d8f','BAR':'#c08bff'};
   var BET=[10,20,50,100];
+  var WEIGHTS=[2,3,5,6,6,4], WSUM=26;                  // 7 最稀有
+  var TRIPLE=[60,25,12,8,8,15], PAIR=[3,1,1,1,1,2];     // RTP 94.2%
   var betIdx=0, score=1000, spinning=false, auto=false;
   var H, LEN=30, LAND=LEN-3, DUR=[1.0,1.4,1.8];
   var $=function(id){return document.getElementById(id)};
   function bet(){return BET[betIdx]}
   function rand(n){return Math.floor(Math.random()*n)}
+  function pick(){var r=rand(WSUM);for(var i=0;i<6;i++){r-=WEIGHTS[i];if(r<0)return i;}return 5}
+  function evaluate(a,b,c){
+    if(a===b&&b===c)return{mult:TRIPLE[a],jackpot:a===0,kind:'triple',line:[0,1,2]};
+    if(a===b)return{mult:PAIR[a],kind:'pair',line:[0,1]};
+    if(b===c)return{mult:PAIR[b],kind:'pair',line:[1,2]};
+    if(a===c)return{mult:PAIR[a],kind:'pair',line:[0,2]};
+    return{mult:0,kind:'none',line:[]};
+  }
   function setSym(el,i){el.textContent=SYM[i];el.style.color=COL[SYM[i]];el.className='sym'+(SYM[i]==='BAR'?' bar':'')}
+  var AC=null;
+  function tone(freq,dur,type,vol){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();var o=AC.createOscillator(),g=AC.createGain();o.type=type||'square';o.frequency.value=freq;o.connect(g);g.connect(AC.destination);var t=AC.currentTime;g.gain.setValueAtTime(vol||0.05,t);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.start(t);o.stop(t+dur)}catch(e){}}
+  function sndSpin(){tone(200,0.08,'square',0.035)}
+  function sndStop(){tone(330,0.06,'triangle',0.05)}
+  function sndWin(){[523,659,784].forEach(function(f,i){setTimeout(function(){tone(f,0.18,'triangle',0.06)},i*90)})}
+  function sndJackpot(){[523,659,784,1047,1319].forEach(function(f,i){setTimeout(function(){tone(f,0.22,'sawtooth',0.05)},i*110)})}
 
   var sky=$('skyline'),hs=[120,80,150,95,135,70,110,90,140,100,125,85];
   hs.forEach(function(h,i){var w=34+(i%3)*10;var b=document.createElement('div');b.className='bld';b.style.width=w+'px';b.style.height=h+'px';sky.appendChild(b)});
@@ -111,7 +127,7 @@
     var win=document.createElement('div');win.className='win';
     var strip=document.createElement('div');strip.className='strip';
     var syms=[];
-    for(var k=0;k<LEN;k++){var s=document.createElement('div');setSym(s,rand(6));strip.appendChild(s);syms.push(s)}
+    for(var k=0;k<LEN;k++){var s=document.createElement('div');setSym(s,pick());strip.appendChild(s);syms.push(s)}
     setSym(syms[0],2);
     win.appendChild(strip);rw.appendChild(win);
     reels.push({win:win,strip:strip,syms:syms,result:2});
@@ -122,30 +138,36 @@
   function result(t,c){var e=$('result');e.textContent=t;e.style.color=c||'#fff'}
   function countUp(from,to){var t0=performance.now();(function step(now){var p=Math.min(1,(now-t0)/650);var v=Math.round(from+(to-from)*p);$('score').textContent='分數　'+v;if(p<1)requestAnimationFrame(step)})(t0)}
   function flash(idx){idx.forEach(function(i){var el=reels[i].syms[LAND];el.classList.remove('pulse');void el.offsetWidth;el.classList.add('pulse')})}
+  function payline(line){(line||[]).forEach(function(i){var w=reels[i].win;w.style.boxShadow='0 0 0 4px #ffd732, inset 0 0 20px rgba(255,210,60,.55)';setTimeout(function(){w.style.boxShadow='inset 0 6px 14px rgba(60,30,0,.3),inset 0 -6px 14px rgba(60,30,0,.3)'},950)})}
   function bigWin(amt,jp){var o=$('bigwin');$('bwt').textContent=jp?'★ JACKPOT ★':'BIG WIN';$('bwa').textContent='+'+amt;o.style.opacity='1';o.style.transform='translate(-50%,-50%) scale(1)';setTimeout(function(){o.style.opacity='0';o.style.transform='translate(-50%,-50%) scale(.3)'},1600)}
   function syncAuto(){var a=$('auto');a.textContent=auto?'AUTO ⏸':'AUTO ▶';a.style.background=auto?'#ffcc32':'#7a4600';a.style.color=auto?'#241500':'#ffe796'}
 
   function spin(){
     if(spinning)return;
-    if(score<bet()){result('餘額不足，請降低押注','#ff6b6b');auto=false;syncAuto();return}
-    spinning=true;score-=bet();render();result('轉動中…','#ffffff');
+    if(score<bet()){
+      if(score<BET[0]){score=1000;result('已補滿 1000 分，再來！','#7bff9c');auto=false;syncAuto();render();return}
+      result('餘額不足，請降低押注','#ff6b6b');auto=false;syncAuto();return;
+    }
+    spinning=true;score-=bet();render();result('轉動中…','#ffffff');sndSpin();
     H=reels[0].syms[0].getBoundingClientRect().height||H;
     reels.forEach(function(R,ri){
-      var prev=R.result;R.result=rand(6);
-      R.syms.forEach(function(el,k){setSym(el,k===LAND?R.result:rand(6));el.classList.remove('pulse')});
+      var prev=R.result;R.result=pick();
+      R.syms.forEach(function(el,k){setSym(el,k===LAND?R.result:pick());el.classList.remove('pulse')});
       setSym(R.syms[0],prev);
       R.strip.style.transition='none';R.strip.style.transform='translateY(0)';
       R.strip.offsetHeight;
       R.strip.style.transition='transform '+DUR[ri]+'s cubic-bezier(.12,.62,.28,1)';
       R.strip.style.transform='translateY('+(-LAND*H)+'px)';
+      setTimeout(sndStop,DUR[ri]*1000);
     });
     setTimeout(onEnd,DUR[2]*1000+80);
   }
   function onEnd(){
     spinning=false;
-    var a=reels[0].result,b=reels[1].result,c=reels[2].result,win=0;
-    if(a===b&&b===c){var jp=SYM[a]==='7';win=bet()*(jp?50:10);result(jp?'★ JACKPOT 777 ★':SYM[a]+' 三連線大獎！','#ffd732');flash([0,1,2]);bigWin(win,jp);}
-    else if(a===b||b===c||a===c){win=bet()*3;result('兩連線小獎！','#5ae6a5');flash(a===b?[0,1]:b===c?[1,2]:[0,2]);}
+    var a=reels[0].result,b=reels[1].result,c=reels[2].result;
+    var e=evaluate(a,b,c),win=bet()*e.mult;
+    if(e.kind==='triple'){result(e.jackpot?'★ JACKPOT 777 ★　×60':SYM[a]+' 三連線　×'+e.mult,'#ffd732');flash(e.line);payline(e.line);bigWin(win,e.jackpot);e.jackpot?sndJackpot():sndWin();}
+    else if(e.kind==='pair'){result('兩連線　×'+e.mult,'#5ae6a5');flash(e.line);payline(e.line);sndWin();}
     else{result('再接再厲','#b9ac9b');}
     if(win>0){var from=score;score+=win;countUp(from,score);render()}else render();
     if(auto)setTimeout(function(){if(auto&&!spinning&&score>=bet())spin()},1100);
