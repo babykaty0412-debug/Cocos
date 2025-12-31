@@ -6,7 +6,8 @@
 
 | 功能 | 說明 |
 |------|------|
-| 🎡 **真實轉輪滾動** | 每輪用 `Mask` 裁切 + 垂直 strip + `tween` cubicOut 減速，三輪錯開停止（1.0 / 1.35 / 1.7s） |
+| 🎡 **真實轉輪滾動** | 每輪 3 排（3×3 盤面），`Mask` 裁切 + 垂直 strip + `tween` cubicOut 減速，三輪錯開停止（1.0 / 1.35 / 1.7s） |
+| 🎰 **5 條連線（payline）** | 上 / 中 / 下 + 2 條對角線，同時判定。每線下注 = 總注 / 5，總 **RTP 維持 94.2%** |
 | 🎲 **加權轉輪 + RTP 94%** | 符號依稀有度加權（7 最稀有），賠率經數學試算控制在 **RTP ≈ 94.2%**（玩家長期略虧，符合真實機台） |
 | 🌈 **彩色符號** | 每個符號獨立配色（7 紅 / ★ 金 / ◆ 藍 / ♣ 綠 / ♥ 粉 / BAR 紫） |
 | 💰 **押注分級** | 10 / 20 / 50 / 100，`＋ −` 按鈕切換，旋轉中自動禁用 |
@@ -31,7 +32,9 @@
 
 符號（依稀有度，權重 `2/3/4/5/6/6`）：`7 ★ BAR ◆ ♣ ♥`
 
-> 賠率與 RTP 由 `test/verify-logic.js` 窮舉 6³ 加權結果精算驗證。
+**5 條連線（payline）**：上 / 中 / 下 / ↘ / ↗，每線獨立判定後加總。每線下注 = 總注 ÷ 5，故總 RTP = 單線 RTP = 94.2%。
+
+> 賠率、5 線與 RTP 由 `test/verify-logic.js`（`evaluateGrid` 窮舉）精算驗證。
 
 ## 🛠 技術
 
@@ -39,8 +42,8 @@
 - **UI**：全程式生成（`Graphics` 繪製圓角矩形 / 邊框 / 城市夜景 / 燈泡），零美術資源
 - **動畫**：`tween` 系統（位移、縮放、透明度、緩動函式）
 - **遮罩**：`Mask` GRAPHICS_RECT 實現轉輪視窗裁切
-- **架構**：`SlotMachine.ts` 組件 + 純函式 `evaluate()`（中獎判定，無 cc 相依、可單獨測試）；`_box()` / `_brd()` / `_lbl()` / `_button()` 可重用繪圖原語
-- **測試**：`test/verify-logic.js` 以 mock `cc` 載入真實程式碼，46 項邏輯斷言 + RTP 精算（`node test/verify-logic.js`）
+- **架構**：`SlotMachine.ts` 組件 + 純函式 `evaluateLine()` / `evaluateGrid()`（多連線判定，無 cc 相依、可單獨測試）；`_box()` / `_brd()` / `_lbl()` / `_button()` 可重用繪圖原語
+- **測試**：`test/verify-logic.js` 以 mock `cc` 載入真實程式碼，41 項邏輯斷言 + 5 線 RTP 精算（`node test/verify-logic.js`）
 - **驗證 SOP**：`docs/VERIFICATION_SOP.md`（5 層驗證金字塔）
 
 ## ▶ 執行

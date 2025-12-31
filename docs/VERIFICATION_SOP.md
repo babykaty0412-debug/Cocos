@@ -144,8 +144,15 @@ curl http://localhost:9222/json          # 取得 tab id
 | L1 TS 語法 | ✅ NO SYNTAX DIAGNOSTICS |
 | L2 JS 結構 | ✅ node --check 通過、`_RF.push`+UUID 保留、功能標記齊全 |
 | L3 API 查證 | ✅ `Mask.Type.GRAPHICS_RECT`、4 個 easing 皆確認存在 |
-| L4 邏輯測試 | ✅ **46 / 46 通過**，含 **RTP = 94.2%**（窮舉加權 6³ 精算） |
-| L5 視覺 | ⏳ 待按 Play（轉輪遮罩裁切為主要待驗項） |
+| L4 邏輯測試 | ✅ **41 / 41 通過**，含 **5 線 RTP = 94.2%**（`evaluateGrid` 窮舉精算） |
+| L5 真引擎 | ✅ **已驗**：CLI build（web-desktop）→ 本地伺服 → CDP 查 `inited:true, canvasChildren:59, masks:3, maskType:[0,0,0], strips:[24,24,24]` + `Page.captureScreenshot` 真實 WebGL 顯示**每輪僅露 3 顆符號（Mask 正確裁切）** |
+
+### L5 真引擎驗證法（免按 Play，AI 可自動）
+1. 關閉 Cocos 編輯器（單實例會把 CLI build 轉發給開著的編輯器 → 等於沒 build）
+2. `CocosCreator.exe --project <複製> --build "platform=web-desktop;debug=true"`
+3. `python -m http.server` 伺服 `build/web-desktop`（web build 需 HTTP，不能 file://）
+4. headless Chrome（`--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`）+ `--remote-debugging-port=9222`
+5. CDP `Runtime.evaluate` 查 `cc` 場景樹（Mask 組件 type / strip 結構）+ `Page.captureScreenshot` 抓真實 WebGL（**桌面截圖抓 WebGL 會黑、CDP 不會**）
 
 ### 修正記錄（測試抓出、皆為測試斷言過時，非遊戲 bug）
 - **T12（第一次）**：原假設「開 AUTO 必扣錢→分數下降」，但隨機中獎使淨額為正 → 改「分數必變動」。

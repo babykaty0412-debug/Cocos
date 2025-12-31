@@ -6,37 +6,54 @@ import {
 const { ccclass } = _decorator;
 
 export const SYMBOLS = ['7', '★', '◆', '♣', '♥', 'BAR'];
-//                       7  ★  ◆  ♣  ♥  BAR   —— 7 最稀有
-export const WEIGHTS = [2, 3, 5, 6, 6, 4];
-export const TRIPLE  = [60, 25, 12, 8, 8, 15];   // 三連線倍率（依稀有度）
-export const PAIR    = [3, 1, 1, 1, 1, 2];        // 兩連線倍率（7對×3、BAR對×2、其餘回本）
+export const WEIGHTS = [2, 3, 5, 6, 6, 4];        // 7 最稀有
+export const TRIPLE  = [60, 25, 12, 8, 8, 15];    // 三連線倍率
+export const PAIR    = [3, 1, 1, 1, 1, 2];         // 兩連線倍率
+// 5 條連線：每條 = [reel0 的列, reel1 的列, reel2 的列]（列 0=上 1=中 2=下）
+export const PAYLINES = [[0, 0, 0], [1, 1, 1], [2, 2, 2], [0, 1, 2], [2, 1, 0]];
 const BET_TIERS = [10, 20, 50, 100];
 const WSUM = WEIGHTS.reduce((a, b) => a + b, 0);
 
 const UI_LAYER  = 1 << 25;
-const SYM_H     = 186;
-const STRIP_LEN = 20;
-const LAND_SLOT = STRIP_LEN - 2;
+const ROW_H     = 60;                 // 每列高（3 列一窗 = 180）
+const STRIP_LEN = 24;
+const LAND      = STRIP_LEN - 2;      // 落點中列 slot；可見列 = LAND-1,LAND,LAND+1
 const C = (r: number, g: number, b: number, a = 255) => new Color(r, g, b, a);
-
-// 每個符號的顏色（賭場風配色）
 const SYM_COLOR = [
     C(255, 77, 77), C(255, 210, 58), C(77, 182, 255),
     C(87, 224, 138), C(255, 93, 143), C(192, 139, 255)
 ];
 
-export interface WinResult { mult: number; jackpot: boolean; kind: 'triple' | 'pair' | 'none'; line: number[]; }
+export interface LineResult { mult: number; jackpot: boolean; kind: 'triple' | 'pair' | 'none'; }
+export interface GridResult { totalMult: number; jackpot: boolean; wins: { line: number; mult: number; cells: number[][] }[]; }
 
-// ── 純邏輯（無 cc 相依，可單獨測試）───────────────────────────────────────────
-export function evaluate(a: number, b: number, c: number): WinResult {
-    if (a === b && b === c) return { mult: TRIPLE[a], jackpot: a === 0, kind: 'triple', line: [0, 1, 2] };
-    if (a === b) return { mult: PAIR[a], jackpot: false, kind: 'pair', line: [0, 1] };
-    if (b === c) return { mult: PAIR[b], jackpot: false, kind: 'pair', line: [1, 2] };
-    if (a === c) return { mult: PAIR[a], jackpot: false, kind: 'pair', line: [0, 2] };
-    return { mult: 0, jackpot: false, kind: 'none', line: [] };
+// ── 純邏輯（無 cc 相依，可單測）─────────────────────────────────────────────
+export function evaluateLine(a: number, b: number, c: number): LineResult {
+    if (a === b && b === c) return { mult: TRIPLE[a], jackpot: a === 0, kind: 'triple' };
+    if (a === b || b === c || a === c) {
+        const s = a === b ? a : b === c ? b : a;
+        return { mult: PAIR[s], jackpot: false, kind: 'pair' };
+    }
+    return { mult: 0, jackpot: false, kind: 'none' };
 }
 
-interface Reel { strip: Node; labels: Label[]; result: number; }
+// grid[reel][row] → 統計 5 條連線
+export function evaluateGrid(grid: number[][]): GridResult {
+    let totalMult = 0, jackpot = false;
+    const wins: { line: number; mult: number; cells: number[][] }[] = [];
+    for (let li = 0; li < PAYLINES.length; li++) {
+        const pl = PAYLINES[li];
+        const r = evaluateLine(grid[0][pl[0]], grid[1][pl[1]], grid[2][pl[2]]);
+        if (r.mult > 0) {
+            totalMult += r.mult;
+            if (r.jackpot) jackpot = true;
+            wins.push({ line: li, mult: r.mult, cells: [[0, pl[0]], [1, pl[1]], [2, pl[2]]] });
+        }
+    }
+    return { totalMult, jackpot, wins };
+}
+
+interface Reel { strip: Node; labels: Label[]; rows: number[]; }
 
 @ccclass('SlotMachine')
 export class SlotMachine extends Component {
@@ -69,7 +86,7 @@ export class SlotMachine extends Component {
     spin() {
         if (this._spinning) return;
         if (this._score < this._bet) {
-            if (this._score < BET_TIERS[0]) {     // 完全破產 → 自動補幣
+            if (this._score < BET_TIERS[0]) {
                 this._score = 1000;
                 this._setResult('已補滿 1000 分，再來！', C(120, 255, 150));
                 this._auto = false; this._syncAuto(); this._refresh();
@@ -87,19 +104,21 @@ export class SlotMachine extends Component {
         const dur = [1.0, 1.35, 1.7];
         for (let r = 0; r < 3; r++) {
             const reel = this._reels[r];
-            const prevIdx = reel.result;
-            reel.result = this._pick();
+            const prev = reel.rows;
+            const nu = [this._pick(), this._pick(), this._pick()];
+            reel.rows = nu;
             for (let k = 0; k < STRIP_LEN; k++) {
-                const idx = k === LAND_SLOT ? reel.result : this._pick();
+                const idx = this._pick();
                 reel.labels[k].string = SYMBOLS[idx];
                 reel.labels[k].color  = SYM_COLOR[idx];
                 reel.labels[k].node.setScale(1, 1, 1);
             }
-            // 重置前保留「目前顯示的符號」於起點，避免重啟跳幀
-            reel.labels[0].string = SYMBOLS[prevIdx];
-            reel.labels[0].color  = SYM_COLOR[prevIdx];
-            reel.strip.setPosition(0, 0, 0);
-            const t = tween(reel.strip).to(dur[r], { position: new Vec3(0, -LAND_SLOT * SYM_H, 0) }, { easing: 'cubicOut' });
+            // 起點（strip.y=ROW_H 顯示 slot 0,1,2）填上一輪結果 → 不跳幀
+            for (let rw = 0; rw < 3; rw++) { reel.labels[rw].string = SYMBOLS[prev[rw]]; reel.labels[rw].color = SYM_COLOR[prev[rw]]; }
+            // 落點（strip.y=LAND*ROW_H 顯示 slot LAND-1,LAND,LAND+1）填本輪結果
+            for (let rw = 0; rw < 3; rw++) { const idx = nu[rw]; reel.labels[LAND - 1 + rw].string = SYMBOLS[idx]; reel.labels[LAND - 1 + rw].color = SYM_COLOR[idx]; }
+            reel.strip.setPosition(0, ROW_H, 0);
+            const t = tween(reel.strip).to(dur[r], { position: new Vec3(0, LAND * ROW_H, 0) }, { easing: 'cubicOut' });
             if (r === 2) t.call(() => this._onSpinEnd());
             t.start();
         }
@@ -107,17 +126,15 @@ export class SlotMachine extends Component {
 
     private _onSpinEnd() {
         this._spinning = false;
-        const a = this._reels[0].result, b = this._reels[1].result, c = this._reels[2].result;
-        const e = evaluate(a, b, c);
-        const win = this._bet * e.mult;
+        const grid = [this._reels[0].rows, this._reels[1].rows, this._reels[2].rows];
+        const e = evaluateGrid(grid);
+        const win = e.totalMult * (this._bet / 5);
 
-        if (e.kind === 'triple') {
-            this._setResult(e.jackpot ? '🎉 JACKPOT！ 777  ×60 🎉' : `🎊 ${SYMBOLS[a]} 三連線　×${e.mult}`, C(255, 215, 50));
-            this._flashWin(e.line);
-            this._bigWin(win, e.jackpot);
-        } else if (e.kind === 'pair') {
-            this._setResult(`✨ 兩連線　×${e.mult}`, C(90, 230, 165));
-            this._flashWin(e.line);
+        if (e.wins.length > 0) {
+            if (e.jackpot) this._setResult('🎉 JACKPOT！ 777 🎉　共 ×' + e.totalMult, C(255, 215, 50));
+            else this._setResult('✨ ' + e.wins.length + ' 條連線　共 ×' + e.totalMult, C(90, 230, 165));
+            this._flashCells(e.wins);
+            if (e.jackpot || e.totalMult >= 20) this._bigWin(win, e.jackpot);
         } else {
             this._setResult('再接再厲 🍀', C(185, 172, 155));
         }
@@ -150,7 +167,7 @@ export class SlotMachine extends Component {
     }
 
     private _refresh() {
-        if (this._betLabel) this._betLabel.string = `押注  ${this._bet}`;
+        if (this._betLabel) this._betLabel.string = `押注 ${this._bet}（5線）`;
         if (this._scoreLabel && !this._scoreAnimating) this._scoreLabel.string = `💰  ${this._score}`;
     }
 
@@ -167,12 +184,16 @@ export class SlotMachine extends Component {
         }, 0.025, steps - 1);
     }
 
-    private _flashWin(idxs: number[]) {
-        for (const i of idxs) {
-            const lbl = this._reels[i].labels[LAND_SLOT];
+    private _flashCells(wins: { cells: number[][] }[]) {
+        const seen: Record<string, boolean> = {};
+        for (const w of wins) for (const cell of w.cells) {
+            const key = cell[0] + '-' + cell[1];
+            if (seen[key]) continue;
+            seen[key] = true;
+            const lbl = this._reels[cell[0]].labels[LAND - 1 + cell[1]];
             tween(lbl.node)
-                .to(0.16, { scale: new Vec3(1.34, 1.34, 1) }, { easing: 'quadOut' })
-                .to(0.16, { scale: new Vec3(1, 1, 1) }, { easing: 'quadIn' })
+                .to(0.15, { scale: new Vec3(1.3, 1.3, 1) }, { easing: 'quadOut' })
+                .to(0.15, { scale: new Vec3(1, 1, 1) }, { easing: 'quadIn' })
                 .union().repeat(3)
                 .start();
         }
@@ -186,12 +207,10 @@ export class SlotMachine extends Component {
         lay.setScale(0.4, 0.4, 1);
         const op = lay.addComponent(UIOpacity);
         op.opacity = 0;
-
         this._box(lay, 'BWbg', 0,  0, 580, 230, 26, C(10, 4, 30, 240));
         this._brd(lay, 'BWbd', 0,  0, 580, 230, 26, C(255, 215, 50), 6);
         this._lbl(lay, 'BWt', jackpot ? '★ JACKPOT ★' : 'BIG WIN', 0,  48, 64, C(255, 215, 50), true, 560, 96);
         this._lbl(lay, 'BWa', `+ ${amount}`, 0, -46, 50, C(120, 255, 150), true, 560, 76);
-
         tween(op).to(0.25, { opacity: 255 }).delay(1.4).to(0.45, { opacity: 0 }).call(() => lay.destroy()).start();
         tween(lay).to(0.4, { scale: new Vec3(1, 1, 1) }, { easing: 'backOut' }).start();
     }
@@ -210,59 +229,63 @@ export class SlotMachine extends Component {
         this._box(cv, 'MI',   0, 10, 682, 612, 18, C(52, 20, 98));
         this._brd(cv, 'MIBd', 0, 10, 682, 612, 18, C(160, 115, 5), 2);
 
-        this._box(cv, 'TBg', 0, 278, 604, 76, 12, C(8, 3, 22, 250));
-        this._brd(cv, 'TBd', 0, 278, 604, 76, 12, C(255, 215, 50), 3);
-        this._lbl(cv, 'TTx', '777   拉 霸 機   777', 0, 278, 38, C(255, 215, 50), true, 594, 72);
+        this._box(cv, 'TBg', 0, 272, 604, 70, 12, C(8, 3, 22, 250));
+        this._brd(cv, 'TBd', 0, 272, 604, 70, 12, C(255, 215, 50), 3);
+        this._lbl(cv, 'TTx', '777   拉 霸 機   777', 0, 272, 36, C(255, 215, 50), true, 594, 66);
 
-        this._bulbs(cv, 0, 210, 578, 26);
+        this._bulbs(cv, 0, 214, 578, 26);
 
-        for (const rx of [-192, 0, 192]) this._buildReel(rx, 52);
+        for (const rx of [-192, 0, 192]) this._buildReel(rx, 58);
 
-        this._box(cv, 'ResBg', 0, -86, 544, 50, 10, C(12, 5, 30, 220));
-        this._brd(cv, 'ResBd', 0, -86, 544, 50, 10, C(200, 148, 12), 2);
-        this._resultLabel = this._lbl(cv, 'Res', '— 按 SPIN 開始 —', 0, -86, 22, C(255, 255, 255), false, 534, 46);
+        this._box(cv, 'ResBg', 0, -96, 560, 46, 10, C(12, 5, 30, 220));
+        this._brd(cv, 'ResBd', 0, -96, 560, 46, 10, C(200, 148, 12), 2);
+        this._resultLabel = this._lbl(cv, 'Res', '— 按 SPIN 開始（5 條連線）—', 0, -96, 21, C(255, 255, 255), false, 550, 42);
 
-        this._scoreLabel = this._lbl(cv, 'Scr', '💰  1000', 0, -132, 36, C(90, 230, 90), true, 420, 50);
+        this._scoreLabel = this._lbl(cv, 'Scr', '💰  1000', 0, -140, 34, C(90, 230, 90), true, 420, 48);
 
-        this._button('Minus', -150, -180, 60, 52, '−', 40, C(120, 70, 0), 'betDown');
-        this._box(cv, 'BetBg', 0, -180, 168, 50, 10, C(8, 3, 22, 220));
-        this._brd(cv, 'BetBd', 0, -180, 168, 50, 10, C(200, 148, 12), 2);
-        this._betLabel = this._lbl(cv, 'Bet', '押注  10', 0, -180, 22, C(255, 195, 90), true, 158, 46);
-        this._button('Plus', 150, -180, 60, 52, '＋', 36, C(120, 70, 0), 'betUp');
+        this._button('Minus', -160, -186, 58, 50, '−', 38, C(120, 70, 0), 'betDown');
+        this._box(cv, 'BetBg', 0, -186, 196, 48, 10, C(8, 3, 22, 220));
+        this._brd(cv, 'BetBd', 0, -186, 196, 48, 10, C(200, 148, 12), 2);
+        this._betLabel = this._lbl(cv, 'Bet', '押注 10（5線）', 0, -186, 20, C(255, 195, 90), true, 186, 44);
+        this._button('Plus', 160, -186, 58, 50, '＋', 34, C(120, 70, 0), 'betUp');
 
-        this._spinBtn(cv, -92, -240);
-        const auto = this._button('Auto', 150, -240, 156, 66, 'AUTO ▶', 28, C(120, 70, 0), 'toggleAuto');
+        this._spinBtn(cv, -92, -242);
+        const auto = this._button('Auto', 150, -242, 156, 64, 'AUTO ▶', 28, C(120, 70, 0), 'toggleAuto');
         this._autoBody  = auto.body;
         this._autoLabel = auto.label;
     }
 
     private _buildReel(rx: number, RY: number) {
-        this._box(this._cv, 'RSh', rx + 5, RY - 5, 170, 202, 12, C(2, 1, 8, 200));
-        this._box(this._cv, 'RBg', rx,     RY,     166, 198, 10, C(255, 255, 255));
-        this._brd(this._cv, 'RBd', rx,     RY,     166, 198, 10, C(200, 148, 12), 5);
-        this._box(this._cv, 'RIn', rx,     RY,     154, 186,  7, C(252, 246, 225));
+        const WIN_H = ROW_H * 3;                          // 180
+        this._box(this._cv, 'RSh', rx + 5, RY - 5, 168, WIN_H + 16, 12, C(2, 1, 8, 200));
+        this._box(this._cv, 'RBg', rx,     RY,     164, WIN_H + 12, 10, C(255, 255, 255));
+        this._brd(this._cv, 'RBd', rx,     RY,     164, WIN_H + 12, 10, C(200, 148, 12), 5);
+        this._box(this._cv, 'RIn', rx,     RY,     152, WIN_H + 2,   7, C(252, 246, 225));
 
         const mask = new Node('RMask');
         mask.layer = UI_LAYER;
         this._cv.addChild(mask);
         mask.setPosition(rx, RY, 0);
-        mask.addComponent(UITransform).setContentSize(150, 182);
+        mask.addComponent(UITransform).setContentSize(150, WIN_H);
         mask.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
 
         const strip = new Node('RStrip');
         strip.layer = UI_LAYER;
         mask.addChild(strip);
-        strip.setPosition(0, 0, 0);
-        strip.addComponent(UITransform).setContentSize(150, STRIP_LEN * SYM_H);
+        strip.addComponent(UITransform).setContentSize(150, STRIP_LEN * ROW_H);
 
         const labels: Label[] = [];
         for (let k = 0; k < STRIP_LEN; k++) {
             const idx = this._pick();
-            labels.push(this._lbl(strip, 'S' + k, SYMBOLS[idx], 0, k * SYM_H, 70, SYM_COLOR[idx], true, 150, SYM_H));
+            labels.push(this._lbl(strip, 'S' + k, SYMBOLS[idx], 0, -k * ROW_H, 40, SYM_COLOR[idx], true, 150, ROW_H));
         }
-        labels[0].string = '◆';
-        labels[0].color  = SYM_COLOR[2];
-        this._reels.push({ strip, labels, result: 2 });
+        for (let rw = 0; rw < 3; rw++) { labels[LAND - 1 + rw].string = '◆'; labels[LAND - 1 + rw].color = SYM_COLOR[2]; }
+        strip.setPosition(0, LAND * ROW_H, 0);
+        this._reels.push({ strip, labels, rows: [2, 2, 2] });
+
+        // 列分隔線（畫在遮罩之上 → 後加為後續子節點）
+        this._box(this._cv, 'RL1', rx, RY + ROW_H / 2, 150, 2, 0, C(150, 110, 10, 130));
+        this._box(this._cv, 'RL2', rx, RY - ROW_H / 2, 150, 2, 0, C(150, 110, 10, 130));
     }
 
     private _city(cv: Node) {
@@ -290,20 +313,10 @@ export class SlotMachine extends Component {
     }
 
     private _spinBtn(cv: Node, x: number, y: number) {
-        const W = 240, H = 66;
+        const W = 240, H = 64;
         this._box(cv, 'BSh', x + 5, y - 5, W, H, 18, C(3, 1, 8, 200));
         const body = this._box(cv, 'BBd', x, y, W, H, 18, C(210, 120, 0));
         this._brd(cv, 'BBr', x, y, W, H, 18, C(255, 215, 50), 4);
-        const sn = new Node('BShn');
-        sn.layer = UI_LAYER;
-        cv.addChild(sn);
-        sn.setPosition(x, y + H / 4, 0);
-        sn.addComponent(UITransform).setContentSize(W - 10, H / 2 - 4);
-        const sg = sn.addComponent(Graphics);
-        sg.clear();
-        sg.fillColor = C(245, 175, 25, 75);
-        sg.roundRect(-(W - 10) / 2, -(H / 2 - 4) / 2, W - 10, H / 2 - 4, 14);
-        sg.fill();
         this._lbl(cv, 'BTx', 'SPIN  ▶', x, y, 32, C(255, 238, 150), true, W, H);
         const btn = body.addComponent(Button);
         btn.transition = Button.Transition.SCALE;

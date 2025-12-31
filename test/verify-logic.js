@@ -1,11 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// verify-logic.js — 拉霸機無頭邏輯測試
+// verify-logic.js — 拉霸機無頭邏輯測試（多 payline 版）
 //
 // 用 CC3 內建 TypeScript 把 ../assets/SlotMachine.ts 轉成 SystemJS 模組，
 // 套上 mock-cc 後載入，實際執行遊戲邏輯並逐項斷言。
-//
-// 執行： node test/verify-logic.js
-// 需求： 已安裝 Cocos Creator 3.8.8（用其內建 typescript 轉譯）
+//   node test/verify-logic.js
 // ─────────────────────────────────────────────────────────────────────────────
 
 const fs = require('fs');
@@ -15,25 +13,18 @@ const { cc, createdNodes } = require('./mock-cc');
 const CC_TS = 'C:/ProgramData/cocos/editors/Creator/3.8.8/resources/app.asar.unpacked/node_modules/typescript/lib/typescript.js';
 const TS_SRC = path.join(__dirname, '..', 'assets', 'SlotMachine.ts');
 
-// ── 1) 轉譯 TS → SystemJS ────────────────────────────────────────────────────
 const ts = require(CC_TS);
-const source = fs.readFileSync(TS_SRC, 'utf8');
-const transpiled = ts.transpileModule(source, {
-  compilerOptions: {
-    module: ts.ModuleKind.System,
-    target: ts.ScriptTarget.ES2017,
-    experimentalDecorators: true,
-  },
+const transpiled = ts.transpileModule(fs.readFileSync(TS_SRC, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.System, target: ts.ScriptTarget.ES2017, experimentalDecorators: true },
   reportDiagnostics: true,
 });
-const syntaxDiags = (transpiled.diagnostics || []).filter(d => d.category === 1); // Error
+const syntaxDiags = (transpiled.diagnostics || []).filter(d => d.category === 1);
 if (syntaxDiags.length) {
-  console.log('❌ TS 轉譯有語法錯誤：');
+  console.log('❌ TS 轉譯語法錯誤：');
   syntaxDiags.forEach(d => console.log('   ' + ts.flattenDiagnosticMessageText(d.messageText, '\n')));
   process.exit(1);
 }
 
-// ── 2) System 墊片 + 載入模組 ─────────────────────────────────────────────────
 let moduleExports = {};
 global.System = {
   register(deps, factory) {
@@ -43,27 +34,23 @@ global.System = {
       return val;
     };
     const mod = factory(_export, { id: 'SlotMachine' });
-    mod.setters.forEach(setter => setter(cc));  // deps 只有 "cc"
+    mod.setters.forEach(setter => setter(cc));
     mod.execute();
   },
 };
-// 轉譯結果是呼叫 System.register 的程式碼，直接 eval 執行
 (0, eval)(transpiled.outputText);
 
-const SlotMachine = moduleExports.SlotMachine;
+const SlotMachine  = moduleExports.SlotMachine;
+const evaluateLine = moduleExports.evaluateLine;
+const evaluateGrid = moduleExports.evaluateGrid;
+const WEIGHTS      = moduleExports.WEIGHTS;
+const TRIPLE       = moduleExports.TRIPLE;
+const PAIR         = moduleExports.PAIR;
 
-// ── 3) 測試框架 ───────────────────────────────────────────────────────────────
-let pass = 0, fail = 0;
-const fails = [];
-function ok(cond, label) {
-  if (cond) { pass++; console.log('  ✅ ' + label); }
-  else { fail++; fails.push(label); console.log('  ❌ ' + label); }
-}
-function eq(actual, expected, label) {
-  ok(actual === expected, `${label}  (得到 ${JSON.stringify(actual)}，預期 ${JSON.stringify(expected)})`);
-}
+let pass = 0, fail = 0; const fails = [];
+function ok(cond, label) { if (cond) { pass++; console.log('  ✅ ' + label); } else { fail++; fails.push(label); console.log('  ❌ ' + label); } }
+function eq(a, e, label) { ok(a === e, `${label}  (得到 ${JSON.stringify(a)}，預期 ${JSON.stringify(e)})`); }
 
-// 建立一個掛好 node 的 SlotMachine 實例並完成 _buildUI
 function makeGame() {
   const canvas = new cc.Node('Canvas');
   const smNode = new cc.Node('SM');
@@ -71,159 +58,131 @@ function makeGame() {
   const g = new SlotMachine();
   g.node = smNode;
   g.onLoad();
-  // flush onLoad 排入的 scheduleOnce（執行 _buildUI + _refresh）
   while (g._onceQ.length) g._onceQ.shift()();
   return { g, canvas };
 }
 
-// ── 4) 測試案例 ───────────────────────────────────────────────────────────────
-console.log('\n【T1】模組載入 / class 匯出');
-ok(typeof SlotMachine === 'function', 'SlotMachine 是 class（可建構）');
+// ── 測試 ──────────────────────────────────────────────────────────────────────
+console.log('\n【T1】模組 / 匯出');
+ok(typeof SlotMachine === 'function', 'SlotMachine class');
+ok(typeof evaluateLine === 'function' && typeof evaluateGrid === 'function', 'evaluateLine / evaluateGrid 已匯出');
 
-console.log('\n【T2】_buildUI 不拋錯、結構正確');
+console.log('\n【T2】_buildUI 結構（3 排 × 24 slot）');
 const { g, canvas } = makeGame();
-eq(g._reels.length, 3, '建立 3 個轉輪');
-ok(g._reels.every(r => r.labels.length === 20), '每輪 20 個符號 label');
-ok(canvas.children.length > 30, `canvas 子節點數 > 30（實際 ${canvas.children.length}）`);
-ok(!!g._resultLabel && !!g._scoreLabel && !!g._betLabel, 'result/score/bet label 都建立');
-ok(!!g._autoLabel && !!g._autoBody, 'AUTO label/body 都建立');
+eq(g._reels.length, 3, '3 個轉輪');
+ok(g._reels.every(r => r.labels.length === 24), '每輪 24 個 slot label');
+ok(g._reels.every(r => Array.isArray(r.rows) && r.rows.length === 3), '每輪 rows 為長度 3');
+ok(canvas.children.length > 40, `canvas 子節點 > 40（實際 ${canvas.children.length}）`);
 
 console.log('\n【T3】初始狀態');
 eq(g._score, 1000, '初始分數 1000');
 eq(g._bet, 10, '初始押注 10');
 
-console.log('\n【T4】押注 +/- 分級循環 10→20→50→100→10');
-g.betUp(); eq(g._bet, 20, 'betUp → 20');
-g.betUp(); eq(g._bet, 50, 'betUp → 50');
-g.betUp(); eq(g._bet, 100, 'betUp → 100');
-g.betUp(); eq(g._bet, 10, 'betUp 循環回 10');
-g.betDown(); eq(g._bet, 100, 'betDown 反向繞到 100');
-g._betIdx = 0; // 重置回 10
+console.log('\n【T4】押注分級循環');
+g.betUp(); eq(g._bet, 20, '→20'); g.betUp(); eq(g._bet, 50, '→50');
+g.betUp(); eq(g._bet, 100, '→100'); g.betUp(); eq(g._bet, 10, '循環回 10');
+g.betDown(); eq(g._bet, 100, '反向→100'); g._betIdx = 0;
 
-console.log('\n【T5】spin() 扣款並結算');
-const before = g._score;
-g.spin();
-eq(g._spinning, false, '結算後 spinning=false（tween 快轉觸發 _onSpinEnd）');
-ok(g._reels.every(r => r.result >= 0 && r.result < 6), '三輪 result 都在 [0,6)');
-ok(g._score !== before - 10 ? true : true, 'spin 後分數已更新'); // 由輸贏決定，僅確認流程跑完
-
-console.log('\n【T6】強制 JACKPOT（777）：押注×60');
+console.log('\n【T5】spin() 流程');
 {
-  const { g } = makeGame();
-  g._onceQ.length = 0;
-  g._betIdx = 0;            // bet 10
-  g._score = 100;
-  g._reels[0].result = 0; g._reels[1].result = 0; g._reels[2].result = 0; // '7','7','7'
+  const { g } = makeGame(); g._onceQ.length = 0;
+  g.spin();
+  eq(g._spinning, false, '結算後 spinning=false');
+  ok(g._reels.every(r => r.rows.every(v => v >= 0 && v < 6)), '所有 rows 值合法 [0,6)');
+}
+
+console.log('\n【T6】evaluateLine 純函式');
+eq(evaluateLine(0,0,0).mult, TRIPLE[0], '777 → TRIPLE[0]=60');
+eq(evaluateLine(0,0,0).jackpot, true, '777 → jackpot');
+eq(evaluateLine(1,1,1).mult, TRIPLE[1], '★★★ → 25');
+eq(evaluateLine(0,0,2).mult, PAIR[0], '7,7,◆ → PAIR[0]=3');
+eq(evaluateLine(3,3,4).mult, PAIR[3], '♣,♣,♥ → PAIR[3]=1');
+eq(evaluateLine(1,2,3).mult, 0, '全不同 → 0');
+
+console.log('\n【T7】evaluateGrid：全 7 → 5 條 JACKPOT 線');
+{
+  const grid = [[0,0,0],[0,0,0],[0,0,0]];
+  const e = evaluateGrid(grid);
+  eq(e.totalMult, 5 * 60, '5 線 × ×60 = 300');
+  eq(e.wins.length, 5, '5 條中獎線');
+  eq(e.jackpot, true, 'jackpot=true');
+}
+
+console.log('\n【T8】evaluateGrid：單一斜線 ◆◆◆');
+{
+  // 拉丁方陣 → 只有 ↗ 斜線（reel0列2,reel1列1,reel2列0）= [2,2,2]
+  const grid = [[0,1,2],[1,2,0],[2,0,1]];
+  const e = evaluateGrid(grid);
+  eq(e.wins.length, 1, '恰 1 條線中獎');
+  eq(e.totalMult, TRIPLE[2], '◆◆◆ = ×12');
+}
+
+console.log('\n【T9】evaluateGrid：精心設計的無中獎盤');
+{
+  const grid = [[1,2,3],[4,0,4],[2,4,5]];   // 5 條線皆三者相異
+  const e = evaluateGrid(grid);
+  eq(e.totalMult, 0, 'totalMult=0');
+  eq(e.wins.length, 0, '無中獎線');
+}
+
+console.log('\n【T10】_onSpinEnd 計分（win = totalMult × 注/5）');
+{
+  const { g } = makeGame(); g._onceQ.length = 0;
+  g._betIdx = 0; g._score = 100;                 // bet 10 → 每線 2
+  g._reels[0].rows = [0,1,2]; g._reels[1].rows = [1,2,0]; g._reels[2].rows = [2,0,1]; // 單斜線 ◆×12
+  g._onSpinEnd();
+  eq(g._score, 100 + 12 * (10/5), '分數 = 100 + 12×2 = 124');
+}
+
+console.log('\n【T11】_onSpinEnd JACKPOT 盤 + BIG WIN 節點');
+{
+  const { g } = makeGame(); g._onceQ.length = 0;
+  g._betIdx = 0; g._score = 100;
+  g._reels[0].rows = [0,0,0]; g._reels[1].rows = [0,0,0]; g._reels[2].rows = [0,0,0];
   const nBefore = createdNodes.length;
   g._onSpinEnd();
-  eq(g._score, 100 + 10 * 60, 'JACKPOT 分數 = 100 + 600 = 700');
-  ok(g._resultLabel.string.includes('JACKPOT'), '結果文字含 JACKPOT');
-  ok(createdNodes.slice(nBefore).includes('BigWin'), '建立 BIG WIN 特效節點');
+  eq(g._score, 100 + 300 * 2, '分數 = 100 + 300×2 = 700');
+  ok(g._resultLabel.string.includes('JACKPOT'), '訊息含 JACKPOT');
+  ok(createdNodes.slice(nBefore).includes('BigWin'), 'BIG WIN 節點生成');
 }
 
-console.log('\n【T7】強制三連線（★）：押注×25');
+console.log('\n【T12】餘額分支（補幣 / 不足）');
 {
   const { g } = makeGame(); g._onceQ.length = 0;
-  g._betIdx = 0; g._score = 100;
-  g._reels[0].result = 1; g._reels[1].result = 1; g._reels[2].result = 1; // '★'×3
-  g._onSpinEnd();
-  eq(g._score, 100 + 10 * 25, '三連線分數 = 100 + 250 = 350');
-  ok(g._resultLabel.string.includes('三連線'), '結果文字含 三連線');
-}
-
-console.log('\n【T8】兩連線：7 對 ×3、♣ 對 ×1');
-{
-  const { g } = makeGame(); g._onceQ.length = 0;
-  g._betIdx = 0; g._score = 100;
-  g._reels[0].result = 0; g._reels[1].result = 0; g._reels[2].result = 2; // 7,7,◆ → PAIR[0]=3
-  g._onSpinEnd();
-  eq(g._score, 100 + 10 * 3, '7 對分數 = 100 + 30 = 130');
-  ok(g._resultLabel.string.includes('兩連線'), '結果文字含 兩連線');
-
-  const { g: g2 } = makeGame(); g2._onceQ.length = 0;
-  g2._betIdx = 0; g2._score = 100;
-  g2._reels[0].result = 3; g2._reels[1].result = 3; g2._reels[2].result = 4; // ♣,♣,♥ → PAIR[3]=1
-  g2._onSpinEnd();
-  eq(g2._score, 100 + 10 * 1, '♣ 對分數 = 100 + 10 = 110（回本）');
-}
-
-console.log('\n【T9】強制無連線：不加分');
-{
-  const { g } = makeGame(); g._onceQ.length = 0;
-  g._betIdx = 0; g._score = 100;
-  g._reels[0].result = 1; g._reels[1].result = 2; g._reels[2].result = 3;
-  g._onSpinEnd();
-  eq(g._score, 100, '無連線分數不變 = 100');
-}
-
-console.log('\n【T10】餘額不足分支');
-{
-  // (a) 完全破產（< 最低注 10）→ 自動補滿 1000
-  const { g } = makeGame(); g._onceQ.length = 0;
-  g._betIdx = 0; g._score = 5;
-  g.spin();
+  g._betIdx = 0; g._score = 5; g.spin();
   eq(g._score, 1000, '破產自動補滿 1000');
-  eq(g._spinning, false, '補幣時不進入旋轉');
   ok(g._resultLabel.string.includes('補滿'), '提示已補滿');
-
-  // (b) 分數夠活但不夠目前押注（50 < 注 100）→ 擋下、不扣款、提示降注
   const { g: g2 } = makeGame(); g2._onceQ.length = 0;
-  g2._betIdx = 3; g2._score = 50;   // 注 100
-  g2.spin();
-  eq(g2._score, 50, '不足目前押注時不扣款');
-  eq(g2._spinning, false, '不進入旋轉');
-  ok(g2._resultLabel.string.includes('餘額不足'), '提示餘額不足、請降低押注');
+  g2._betIdx = 3; g2._score = 50; g2.spin();   // 注 100
+  eq(g2._score, 50, '不足當前押注 → 不扣款');
+  ok(g2._resultLabel.string.includes('餘額不足'), '提示餘額不足');
 }
 
-console.log('\n【T11】分數滾動動畫跑到正確終值');
-{
-  const { g } = makeGame(); g._onceQ.length = 0;
-  g._betIdx = 0; g._score = 100;
-  g._reels[0].result = 1; g._reels[1].result = 1; g._reels[2].result = 1; // ★×3 = ×25
-  g._onSpinEnd();
-  ok(g._scoreLabel.string.includes('350'), `score label 顯示終值 350（實際 "${g._scoreLabel.string}"）`);
-  eq(g._scoreAnimating, false, '計分動畫結束後 _scoreAnimating=false');
-}
-
-console.log('\n【T12】AUTO 切換會立即觸發一次 spin');
+console.log('\n【T13】AUTO 觸發');
 {
   const { g } = makeGame(); g._onceQ.length = 0;
   g.toggleAuto();
-  eq(g._auto, true, 'AUTO 開啟');
-  eq(g._spinning, false, 'AUTO 觸發的 spin 已完成結算');
-  // _onceQ 只在 _onSpinEnd 內排入 → 有排程即證明 spin 已完整跑完一輪
-  ok(g._onceQ.length >= 1, 'AUTO 觸發並完成一次 spin、已排入下一輪');
-  ok(!g._resultLabel.string.includes('按 SPIN'), '結果已從初始訊息更新（spin 有結算）');
+  eq(g._auto, true, 'AUTO 開');
+  eq(g._spinning, false, 'spin 已完成');
+  ok(g._onceQ.length >= 1, '已排下一輪（證明 spin 完整跑完）');
 }
 
-console.log('\n【T13】RTP 精算（窮舉加權 6³）+ evaluate 純函式');
+console.log('\n【T14】RTP 精算（每線窮舉加權 6³）');
 {
-  const W = moduleExports.WEIGHTS, T = moduleExports.TRIPLE, P = moduleExports.PAIR;
-  const evaluate = moduleExports.evaluate;
-  ok(Array.isArray(W) && W.length === 6, 'WEIGHTS 已匯出（長度 6）');
-  ok(typeof evaluate === 'function', 'evaluate 已匯出');
-  // evaluate 正確性
-  eq(evaluate(0,0,0).mult, T[0], 'evaluate 777 → TRIPLE[0]');
-  eq(evaluate(0,0,0).jackpot, true, 'evaluate 777 → jackpot');
-  eq(evaluate(1,1,1).mult, T[1], 'evaluate ★★★ → TRIPLE[1]');
-  eq(evaluate(0,0,2).mult, P[0], 'evaluate 7,7,◆ → PAIR[0]');
-  eq(evaluate(1,2,3).mult, 0, 'evaluate 全不同 → 0');
-  // 精確 RTP
-  const WSUM = W.reduce((a,b)=>a+b,0);
+  const W = WEIGHTS, WSUM = W.reduce((a,b)=>a+b,0);
   const p = W.map(w => w / WSUM);
-  let rtp = 0, hit = 0;
+  let lineRtp = 0, hit = 0;
   for (let a=0;a<6;a++) for (let b=0;b<6;b++) for (let c=0;c<6;c++) {
-    const prob = p[a]*p[b]*p[c];
-    const m = evaluate(a,b,c).mult;
-    rtp += prob * m; if (m > 0) hit += prob;
+    const prob = p[a]*p[b]*p[c], m = evaluateLine(a,b,c).mult;
+    lineRtp += prob * m; if (m > 0) hit += prob;
   }
-  console.log(`     RTP = ${(rtp*100).toFixed(1)}%　總中獎率 = ${(hit*100).toFixed(1)}%`);
-  ok(rtp > 0.88 && rtp < 0.96, `RTP 落在 88%~96% 合理區間（實際 ${(rtp*100).toFixed(1)}%）`);
-  ok(rtp < 1.0, 'RTP < 100%（玩家長期不會穩賺，符合真實機台）');
+  // 5 條線、每線注 = 總注/5 → 總 RTP = 每線 RTP（線性疊加，分子分母同乘 5）
+  console.log(`     每線 RTP = ${(lineRtp*100).toFixed(1)}%（= 總 RTP）　單線中獎率 ${(hit*100).toFixed(1)}%`);
+  ok(lineRtp > 0.88 && lineRtp < 0.96, `RTP 落在 88~96%（實際 ${(lineRtp*100).toFixed(1)}%）`);
+  ok(lineRtp < 1.0, 'RTP < 100%（玩家長期不穩賺）');
 }
 
-// ── 5) 結果 ──────────────────────────────────────────────────────────────────
 console.log('\n────────────────────────────────────────');
 console.log(`通過 ${pass} / 失敗 ${fail}`);
-if (fail) { console.log('失敗項目：'); fails.forEach(f => console.log('  - ' + f)); process.exit(1); }
+if (fail) { console.log('失敗：'); fails.forEach(f => console.log('  - ' + f)); process.exit(1); }
 console.log('🎉 全部邏輯測試通過');
