@@ -70,6 +70,11 @@ export class SlotMachine extends Component {
     private _betIdx         = 0;
     private _auto           = false;
     private _cv!: Node;
+    private _bulbG!: Graphics;
+    private _bulbN = 0;
+    private _bulbW = 0;
+    private _bulbStep = 0;
+    private _bulbPhase = 0;
 
     private get _bet() { return BET_TIERS[this._betIdx]; }
 
@@ -229,30 +234,41 @@ export class SlotMachine extends Component {
         this._box(cv, 'MI',   0, 10, 682, 612, 18, C(52, 20, 98));
         this._brd(cv, 'MIBd', 0, 10, 682, 612, 18, C(160, 115, 5), 2);
 
-        this._box(cv, 'TBg', 0, 272, 604, 70, 12, C(8, 3, 22, 250));
-        this._brd(cv, 'TBd', 0, 272, 604, 70, 12, C(255, 215, 50), 3);
-        this._lbl(cv, 'TTx', '777   拉 霸 機   777', 0, 272, 36, C(255, 215, 50), true, 594, 66);
+        this._box(cv, 'TBg', 0, 286, 604, 64, 12, C(8, 3, 22, 250));
+        this._brd(cv, 'TBd', 0, 286, 604, 64, 12, C(255, 215, 50), 3);
+        this._lbl(cv, 'TTx', '777   拉 霸 機   777', 0, 286, 35, C(255, 215, 50), true, 594, 60);
 
-        this._bulbs(cv, 0, 214, 578, 26);
+        this._bulbs(cv, 0, 240, 578, 26);
 
-        for (const rx of [-192, 0, 192]) this._buildReel(rx, 58);
+        for (const rx of [-192, 0, 192]) this._buildReel(rx, 96);
 
-        this._box(cv, 'ResBg', 0, -96, 560, 46, 10, C(12, 5, 30, 220));
-        this._brd(cv, 'ResBd', 0, -96, 560, 46, 10, C(200, 148, 12), 2);
-        this._resultLabel = this._lbl(cv, 'Res', '— 按 SPIN 開始（5 條連線）—', 0, -96, 21, C(255, 255, 255), false, 550, 42);
+        // 賠率表
+        this._lbl(cv, 'Pay', '777 ×60　·　三連線 ×8–25　·　兩連線 ×1–3　·　5 條線　·　RTP 94%',
+            0, -18, 14, C(222, 200, 142), false, 672, 22);
 
-        this._scoreLabel = this._lbl(cv, 'Scr', '💰  1000', 0, -140, 34, C(90, 230, 90), true, 420, 48);
+        this._box(cv, 'ResBg', 0, -58, 560, 40, 10, C(12, 5, 30, 220));
+        this._brd(cv, 'ResBd', 0, -58, 560, 40, 10, C(200, 148, 12), 2);
+        this._resultLabel = this._lbl(cv, 'Res', '— 按 SPIN 開始（5 條連線）—', 0, -58, 21, C(255, 255, 255), false, 550, 36);
 
-        this._button('Minus', -160, -186, 58, 50, '−', 38, C(120, 70, 0), 'betDown');
-        this._box(cv, 'BetBg', 0, -186, 196, 48, 10, C(8, 3, 22, 220));
-        this._brd(cv, 'BetBd', 0, -186, 196, 48, 10, C(200, 148, 12), 2);
-        this._betLabel = this._lbl(cv, 'Bet', '押注 10（5線）', 0, -186, 20, C(255, 195, 90), true, 186, 44);
-        this._button('Plus', 160, -186, 58, 50, '＋', 34, C(120, 70, 0), 'betUp');
+        this._scoreLabel = this._lbl(cv, 'Scr', '💰  1000', 0, -104, 34, C(90, 230, 90), true, 420, 46);
 
-        this._spinBtn(cv, -92, -242);
-        const auto = this._button('Auto', 150, -242, 156, 64, 'AUTO ▶', 28, C(120, 70, 0), 'toggleAuto');
+        this._button('Minus', -150, -154, 56, 46, '−', 38, C(120, 70, 0), 'betDown');
+        this._box(cv, 'BetBg', 0, -154, 188, 46, 10, C(8, 3, 22, 220));
+        this._brd(cv, 'BetBd', 0, -154, 188, 46, 10, C(200, 148, 12), 2);
+        this._betLabel = this._lbl(cv, 'Bet', '押注 10（5線）', 0, -154, 20, C(255, 195, 90), true, 178, 42);
+        this._button('Plus', 150, -154, 56, 46, '＋', 34, C(120, 70, 0), 'betUp');
+
+        this._spinBtn(cv, -94, -222);
+        const auto = this._button('Auto', 152, -222, 152, 60, 'AUTO ▶', 28, C(120, 70, 0), 'toggleAuto');
         this._autoBody  = auto.body;
         this._autoLabel = auto.label;
+
+        // 底部操作提示
+        this._lbl(cv, 'Hint', '5 條連線：上 / 中 / 下 / ↘ / ↗　　點 SPIN ▶ 開始',
+            0, -280, 14, C(150, 135, 205), false, 660, 22);
+
+        // 跑馬燈閃爍（idle 動態效果）
+        this.schedule(() => this._blinkBulbs(), 0.5);
     }
 
     private _buildReel(rx: number, RY: number) {
@@ -313,7 +329,7 @@ export class SlotMachine extends Component {
     }
 
     private _spinBtn(cv: Node, x: number, y: number) {
-        const W = 240, H = 64;
+        const W = 240, H = 60;
         this._box(cv, 'BSh', x + 5, y - 5, W, H, 18, C(3, 1, 8, 200));
         const body = this._box(cv, 'BBd', x, y, W, H, 18, C(210, 120, 0));
         this._brd(cv, 'BBr', x, y, W, H, 18, C(255, 215, 50), 4);
@@ -332,19 +348,29 @@ export class SlotMachine extends Component {
         cv.addChild(n);
         n.setPosition(x, y, 0);
         n.addComponent(UITransform).setContentSize(w, 18);
-        const g = n.addComponent(Graphics);
+        this._bulbG = n.addComponent(Graphics);
+        this._bulbN = count; this._bulbW = w; this._bulbStep = w / count;
+        this._drawBulbs();
+    }
+
+    private _drawBulbs() {
+        const g = this._bulbG, w = this._bulbW, n = this._bulbN, step = this._bulbStep, ph = this._bulbPhase;
         g.clear();
-        const step = w / count;
-        g.fillColor = C(255, 238, 60);
-        for (let i = 0; i < count; i += 2) g.circle(-w / 2 + step * (i + 0.5), 0, 7);
+        g.fillColor = C(255, 238, 60);                       // 亮燈（跑馬燈相位）
+        for (let i = 0; i < n; i++) if ((i + ph) % 2 === 0) g.circle(-w / 2 + step * (i + 0.5), 0, 7);
         g.fill();
-        g.fillColor = C(78, 58, 14);
-        for (let i = 1; i < count; i += 2) g.circle(-w / 2 + step * (i + 0.5), 0, 7);
+        g.fillColor = C(78, 58, 14);                         // 暗燈
+        for (let i = 0; i < n; i++) if ((i + ph) % 2 !== 0) g.circle(-w / 2 + step * (i + 0.5), 0, 7);
         g.fill();
-        g.strokeColor = C(195, 160, 20);
+        g.strokeColor = C(195, 160, 20);                     // 燈框
         g.lineWidth = 1;
-        for (let i = 0; i < count; i++) g.circle(-w / 2 + step * (i + 0.5), 0, 7);
+        for (let i = 0; i < n; i++) g.circle(-w / 2 + step * (i + 0.5), 0, 7);
         g.stroke();
+    }
+
+    private _blinkBulbs() {
+        this._bulbPhase ^= 1;
+        this._drawBulbs();
     }
 
     private _button(name: string, x: number, y: number, w: number, h: number,
