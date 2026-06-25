@@ -2,6 +2,8 @@
 
 > Cocos Creator 3.8.8 作品集專案 · 全程式生成 UI，無外部美術資源
 
+### 🎮 線上試玩（真 Cocos 引擎）→ **https://babykaty0412-debug.github.io/Cocos/**
+
 ## ✨ 功能
 
 | 功能 | 說明 |
@@ -16,6 +18,7 @@
 | 🏆 **BIG WIN 彈窗** | 三連線時彈出全螢幕特效（backOut 縮放 + 淡入淡出） |
 | 🔁 **自動旋轉** | AUTO 按鈕切換連續旋轉，餘額不足自動停 |
 | ♻️ **破產補幣** | 分數低於最低押注時自動補滿 1000，不卡死 |
+| 💡 **跑馬燈燈泡** | 機台頂部燈泡交替閃爍（每 0.5s 換相位，idle 也有動感） |
 
 ## 🎲 賠率（RTP ≈ 94.2%）
 
@@ -46,11 +49,13 @@
 - **測試**：`test/verify-logic.js` 以 mock `cc` 載入真實程式碼，41 項邏輯斷言 + 5 線 RTP 精算（`node test/verify-logic.js`）
 - **驗證 SOP**：`docs/VERIFICATION_SOP.md`（5 層驗證金字塔）
 
-## ▶ 執行
+## ▶ 執行 / 試玩
 
-**Cocos 版**
-1. 以 Cocos Creator 3.8.8 開啟本資料夾
-2. 開啟 `assets/scene.scene`，按 ▶ Play（設計解析度 1280×720）
+**🌐 線上試玩（推薦）** — 真 Cocos 引擎 web build，部署於 GitHub Pages：
+**https://babykaty0412-debug.github.io/Cocos/**
 
-**網頁 demo**（免引擎、可線上展示）
-- 直接用瀏覽器開 `web-demo/index.html`（含 WebAudio 音效、鍵盤操作：空白鍵 SPIN、↑↓ 調押注）
+**Cocos 原始專案** — 用 Cocos Creator 3.8.8 開啟本資料夾 → 開 `assets/scene.scene` → ▶ Play（設計解析度 1280×720）
+
+**單檔網頁版** — 瀏覽器直接開 `web-demo/index.html`（HTML 複製版，離線可玩、含 WebAudio 音效、鍵盤操作：空白鍵 SPIN、↑↓ 調押注）
+
+> 線上版（gh-pages 分支）由 Cocos CLI build 產出，再經 CDP 驗證 Mask 裁切與多連線，部署流程見 `docs/VERIFICATION_SOP.md`。
