@@ -59,3 +59,20 @@
 **單檔網頁版** — 瀏覽器直接開 `web-demo/index.html`（HTML 複製版，離線可玩、含 WebAudio 音效、鍵盤操作：空白鍵 SPIN、↑↓ 調押注）
 
 > 線上版（gh-pages 分支）由 Cocos CLI build 產出，再經 CDP 驗證 Mask 裁切與多連線，部署流程見 `docs/VERIFICATION_SOP.md`。
+
+## 🖥️ 在新電腦上設定（clone 後就能開發）
+
+```bash
+git clone https://github.com/babykaty0412-debug/Cocos.git
+cd Cocos
+git config user.email "babykaty0412@users.noreply.github.com"   # 保持 commit email 不外露
+```
+
+1. 安裝 **Cocos Creator 3.8.8**（透過 Cocos Dashboard）
+2. 用 Cocos Creator 開啟 clone 下來的 `Cocos` 資料夾 → 首次會自動匯入資產（`temp/`、`library/` 會重新生成，已被 `.gitignore` 排除）
+3. 開 `assets/scene.scene` → 按 ▶ Play
+4. 跑邏輯測試：`node test/verify-logic.js`（需已安裝 CC3，測試會用其內建 tsc）
+
+**分支說明**：`master` = 原始碼；`gh-pages` = 已部署的真引擎 web build（勿手動改，重新部署見 SOP）。
+
+> 專案完整存於此 repo，新電腦只需 `git clone` 即可，不必搬 `temp/`、`library/`（會自動重建）。
